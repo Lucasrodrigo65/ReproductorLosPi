@@ -13,6 +13,8 @@ Permite buscar música en YouTube, reproducirla en la PC y enviarla a un canal d
 El modo compartido usa un servidor online como única conexión del bot a Discord.
 Las PCs se conectan por HTTPS con una clave de acceso; no necesitan el token del bot.
 Incluye cola común, pausa, siguiente y actualización de estado en todos los clientes.
+Cada PC prepara y envía el audio por HTTPS antes de agregarlo a la cola; el servidor
+reproduce ese archivo temporal sin descargarlo desde YouTube.
 
 Leé [SHARED.md](SHARED.md) para desplegar el servidor y configurar los controles.
 El servidor usa `Dockerfile`, `requirements-server.txt` y `railway.json`.

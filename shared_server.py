@@ -39,6 +39,54 @@ class SharedController:
         self.stopping = False
         self.tasks = set()
         self.player.on_audio_finished = self._audio_finished
+        self.media_dir = tempfile.TemporaryDirectory(prefix='lospi-audio-')
+        self.uploads = {}
+        self.uploading = set()
+
+    def discard_media(self, track):
+        if track and track.get('upload_id'):
+            item = self.uploads.pop(track['upload_id'], None)
+            if item:
+                item['path'].unlink(missing_ok=True)
+
+    async def upload(self, request):
+        upload_id = request.match_info['upload_id']
+        try:
+            if str(uuid.UUID(upload_id)) != upload_id:
+                raise ValueError()
+        except ValueError:
+            raise ControlError('Identificador de audio inválido.')
+        for ident, item in list(self.uploads.items()):
+            if not item['claimed'] and time.monotonic() - item['created'] > 1800:
+                self.discard_media({'upload_id': ident})
+        if upload_id in self.uploads:
+            return web.json_response({'upload_id': upload_id})
+        maximum = 64 * 1024 * 1024
+        if upload_id in self.uploading or len(self.uploading) >= 2:
+            raise ControlError('Hay otras transferencias en curso. Reintentá en unos segundos.', 409)
+        if sum(v['size'] for v in self.uploads.values()) + (len(self.uploading) + 1) * maximum > 256 * 1024 * 1024:
+            raise ControlError('El espacio temporal está lleno. Esperá a que avance la cola.', 409)
+        if not request.content_length or request.content_length > maximum:
+            raise ControlError('El audio debe ocupar entre 1 byte y 64 MB.', 413)
+        self.uploading.add(upload_id)
+        path = Path(self.media_dir.name) / upload_id
+        size = 0
+        try:
+            async with asyncio.timeout(180):
+                with path.open('wb') as output:
+                    async for chunk in request.content.iter_chunked(65536):
+                        size += len(chunk)
+                        if size > maximum:
+                            raise ControlError('El audio supera 64 MB.', 413)
+                        output.write(chunk)
+            if size != request.content_length:
+                raise ControlError('La transferencia quedó incompleta.')
+            self.uploads[upload_id] = {'path': path, 'size': size, 'created': time.monotonic(), 'claimed': False}
+            return web.json_response({'upload_id': upload_id})
+        finally:
+            self.uploading.discard(upload_id)
+            if upload_id not in self.uploads:
+                path.unlink(missing_ok=True)
 
     async def _call(self, coroutine):
         return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(coroutine, self.player.loop))
@@ -81,6 +129,7 @@ class SharedController:
                     if leave:
                         await voice.disconnect(force=True)
         await self._call(stop())
+        self.discard_media(self.current)
         self.current = None
         self.current_generation = None
         self.paused = False
@@ -94,6 +143,8 @@ class SharedController:
             try:
                 if track.get('test'):
                     await self._call(self.player._test_sound(self.token, int(track['channel_id'])))
+                elif track.get('upload_id'):
+                    await self._call(self.player._play_file(self.token, int(track['channel_id']), self.uploads[track['upload_id']]['path']))
                 else:
                     await self._call(self.player._play(self.token, int(track['channel_id']), track['url']))
                 self.current_generation = self.player.playback_generation
@@ -101,6 +152,7 @@ class SharedController:
             except Exception:
                 log.warning('No se pudo iniciar una pista; se continúa con la cola.')
                 self.last_error = 'Una pista no pudo reproducirse. Probá otra canción o el tono de prueba.'
+                self.discard_media(track)
                 self.current = None
                 self.current_generation = None
         self.revision += 1
@@ -111,6 +163,7 @@ class SharedController:
                 return
             if failed:
                 self.last_error = 'Falló el envío de audio de una pista.'
+            self.discard_media(self.current)
             self.current = None
             self.current_generation = None
             self.paused = False
@@ -150,13 +203,19 @@ class SharedController:
             if action == 'test' and (self.current or self.pending):
                 raise ControlError('La prueba de sonido requiere que la cola esté vacía.', 409)
             url = payload.get('url', '')
-            if action == 'play' and (not isinstance(url, str) or not re.fullmatch(r'https://www\.youtube\.com/watch\?v=[A-Za-z0-9_-]{11}', url)):
+            upload_id = payload.get('upload_id')
+            if upload_id is not None and (not isinstance(upload_id, str) or upload_id not in self.uploads or self.uploads[upload_id]['claimed']):
+                raise ControlError('Ese audio no está disponible. Volvé a agregar la canción.', 409)
+            if action == 'play' and not upload_id and (not isinstance(url, str) or not re.fullmatch(r'https://www\.youtube\.com/watch\?v=[A-Za-z0-9_-]{11}', url)):
                 raise ControlError('Se requiere un enlace de video de YouTube válido.')
             track = {'id': str(uuid.uuid4()), 'url': url, 'channel_id': channel,
                      'title': str(payload.get('title') or 'Canción de YouTube')[:200],
                      'requested_by': str(payload.get('name') or 'Amigo')[:48]}
             if action == 'test':
                 track.update(test=True, title='Tono de prueba')
+            elif upload_id:
+                self.uploads[upload_id]['claimed'] = True
+                track['upload_id'] = upload_id
             was_playing = self.current is not None
             self.last_error = ''
             self.pending.append(track)
@@ -171,6 +230,8 @@ class SharedController:
             await self._start_next()
             message = 'Se avanzó a la siguiente canción'
         elif action == 'stop':
+            for track in self.pending:
+                self.discard_media(track)
             self.pending.clear()
             await self._stop_audio(leave=True)
             self.revision += 1
@@ -199,6 +260,7 @@ class SharedController:
             await self._call(self.player._disconnect())
         self.player.close()
         await asyncio.to_thread(self.player.thread.join, 5)
+        self.media_dir.cleanup()
 
 
 def create_app(controller, control_key):
@@ -240,6 +302,7 @@ def create_app(controller, control_key):
     app.router.add_get('/v1/state', state)
     app.router.add_get('/v1/rooms', rooms)
     app.router.add_post('/v1/commands/{action}', command)
+    app.router.add_put('/v1/audio/{upload_id}', controller.upload)
     app.on_cleanup.append(cleanup)
     return app
 

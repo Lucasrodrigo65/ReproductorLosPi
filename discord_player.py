@@ -206,6 +206,18 @@ class DiscordMusicPlayer:
         )
         self._start_audio(voice, source)
 
+    async def _play_file(self, token, channel_id, path):
+        """Play a server-owned upload; never resolve a remote URL here."""
+        import discord
+        import imageio_ffmpeg
+        voice = await self._join_voice(token, channel_id)
+        source = discord.FFmpegOpusAudio(
+            str(path), executable=imageio_ffmpeg.get_ffmpeg_exe(),
+            before_options='-nostdin -protocol_whitelist file,pipe',
+            options='-vn -loglevel error', bitrate=128,
+        )
+        self._start_audio(voice, source)
+
     def _start_audio(self, voice, source):
         import discord
 

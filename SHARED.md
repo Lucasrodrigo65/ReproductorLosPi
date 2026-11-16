@@ -49,9 +49,10 @@ El bloqueo de instancia impide iniciar dos procesos en el mismo host o contenedo
 no es un bloqueo distribuido entre varios servicios independientes. No despliegues
 el mismo bot en otro servicio ni aumentes el número de réplicas.
 
-El hosting puede tener costo según el plan y el consumo. La reproducción de YouTube
-desde un centro de datos puede quedar bloqueada por YouTube aunque funcione desde
-una PC doméstica; el tono de prueba permite separar ese problema del envío de voz.
+El hosting puede tener costo según el plan y el consumo. La app nueva descarga el
+audio desde la PC de quien agrega la canción y lo envía por HTTPS. Railway reproduce
+el archivo recibido; no necesita acceder a YouTube para esos pedidos. La descarga
+local también puede fallar si YouTube restringe ese video.
 
 `/healthz` comprueba que el proceso HTTP está activo. La validación real del token,
 los permisos y el audio requiere consultar las salas y probar el tono en Discord.
@@ -70,7 +71,17 @@ En **Servidor compartido**, ingresar:
 2. La clave de acceso compartida.
 3. El nombre que se mostrará en la cola.
 
-Elegir la sala y pulsar **Agregar a Discord** para enviar una canción. La app conserva
+Elegir la sala y pulsar **Agregar a Discord** para enviar una canción.
+Esperar a que termine la preparación y transferencia antes de cerrar la app. Una vez
+confirmado el pedido, la canción queda en el servidor y ya no requiere esa PC encendida.
+No es una transmisión en vivo: se transfiere primero el archivo completo.
+
+Límites: 64 MB por canción, 256 MB temporales en total y dos transferencias simultáneas.
+Los audios se borran al terminar, saltar o detener; los archivos sin pedido asociado
+caducan a los 30 minutos y se limpian al recibir otra transferencia. No se conservan
+tras reiniciar el servidor. Actualizar tanto servidor como ejecutable para este modo.
+
+ La app conserva
 la conexión configurada en `%LOCALAPPDATA%/LosPiCompartido/connection.json`, con la
 clave cifrada por Windows DPAPI. No lee el token guardado por el reproductor personal.
 

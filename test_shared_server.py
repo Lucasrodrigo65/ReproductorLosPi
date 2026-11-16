@@ -1,7 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import uuid
 
 from aiohttp.test_utils import TestClient, TestServer
@@ -33,6 +33,10 @@ class FakePlayer:
     async def _test_sound(self, token, channel):
         await self._play(token, channel, 'tone')
 
+    async def _play_file(self, token, channel, path):
+        assert path.read_bytes() == b'fake-audio'
+        await self._play(token, channel, 'uploaded-file')
+
     async def _disconnect(self):
         pass
 
@@ -44,6 +48,9 @@ class SharedServerTests(unittest.IsolatedAsyncioTestCase):
         async def direct(operation):
             return await operation
         self.controller._call = direct
+
+    async def asyncTearDown(self):
+        self.controller.media_dir.cleanup()
 
     async def play(self, channel='123', request_id=None):
         return await self.controller.command('play', {'channel_id': channel, 'url': URL, 'name': 'Amigo'}, request_id or str(uuid.uuid4()))
@@ -126,6 +133,7 @@ class SharedServerTests(unittest.IsolatedAsyncioTestCase):
         friends = [RemoteMusicPlayer(endpoint, KEY, name) for name in ('Amigo A', 'Amigo B')]
         try:
             for friend in friends:
+                friend._prepare_audio = lambda payload: payload
                 friend.play('', 123, URL)
             async with asyncio.timeout(5):
                 while len(self.player.calls) != 1 or len(self.controller.pending) != 1:
@@ -140,6 +148,66 @@ class SharedServerTests(unittest.IsolatedAsyncioTestCase):
         finally:
             for friend in friends:
                 friend.close()
+            await client.close()
+
+    async def test_upload_auth_retry_play_and_cleanup(self):
+        client = TestClient(TestServer(create_app(self.controller, KEY)))
+        await client.start_server()
+        ident = str(uuid.uuid4())
+        headers = {'Authorization': 'Bearer ' + KEY}
+        try:
+            self.assertEqual((await client.put('/v1/audio/' + ident, data=b'fake-audio')).status, 401)
+            response = await client.put('/v1/audio/' + ident, data=b'fake-audio', headers=headers)
+            self.assertEqual(response.status, 200)
+            self.assertEqual((await client.put('/v1/audio/' + ident, data=b'fake-audio', headers=headers)).status, 200)
+            path = self.controller.uploads[ident]['path']
+            result = await self.controller.command('play', {'channel_id': '123', 'upload_id': ident}, str(uuid.uuid4()))
+            self.assertNotIn(str(path), str(result))
+            self.assertEqual(self.player.calls, [(123, 'uploaded-file')])
+            with self.assertRaises(ControlError):
+                await self.controller.command('play', {'channel_id': '123', 'upload_id': ident}, str(uuid.uuid4()))
+            await self.controller._finish(self.controller.current_generation, False)
+            self.assertFalse(path.exists())
+            self.assertFalse(self.controller.uploads)
+            self.assertEqual((await client.put('/v1/audio/not-a-uuid', data=b'x', headers=headers)).status, 400)
+        finally:
+            await client.close()
+
+    async def test_desktop_download_upload_and_shared_queue(self):
+        from pathlib import Path
+        def fake_downloader(options):
+            downloader = MagicMock()
+            filename = options['outtmpl'].replace('%(ext)s', 'webm')
+            def extract(url, download):
+                Path(filename).write_bytes(b'fake-audio')
+                return {'url': url}
+            downloader.extract_info.side_effect = extract
+            downloader.prepare_filename.return_value = filename
+            downloader.__enter__.return_value = downloader
+            return downloader
+        client = TestClient(TestServer(create_app(self.controller, KEY)))
+        await client.start_server()
+        friends = []
+        try:
+            with patch('yt_dlp.YoutubeDL', side_effect=fake_downloader):
+                friends = [RemoteMusicPlayer(str(client.make_url('')).rstrip('/'), KEY, name) for name in ('A', 'B')]
+                for friend in friends:
+                    friend.play('', 123, URL)
+                async with asyncio.timeout(10):
+                    while len(self.controller.uploads) != 2 or len(self.controller.pending) != 1:
+                        await asyncio.sleep(.02)
+                self.assertEqual(self.player.calls, [(123, 'uploaded-file')])
+                await self.controller.command('skip', {}, str(uuid.uuid4()))
+                self.assertEqual(len(self.controller.uploads), 1)
+                self.assertEqual(len(self.player.calls), 2)
+                from unittest.mock import AsyncMock
+                self.player.voice.disconnect = AsyncMock()
+                await self.controller.command('stop', {}, str(uuid.uuid4()))
+                self.assertFalse(self.controller.uploads)
+        finally:
+            for friend in friends:
+                friend.close()
+                await asyncio.to_thread(friend.thread.join, 2)
             await client.close()
 
 
