@@ -49,7 +49,7 @@ def load_settings(path=None):
         if payload.get('version') != 1:
             raise ValueError('version')
         channel = payload['channel_id']
-        if not isinstance(channel, str) or not channel.isdecimal() or int(channel) <= 0:
+        if not isinstance(channel, str) or (channel and (not channel.isdecimal() or int(channel) <= 0)):
             raise ValueError('channel')
         encrypted = base64.b64decode(payload['token_dpapi'], validate=True)
         token = _crypt(encrypted, decrypt=True).decode('utf-8')
@@ -64,8 +64,8 @@ def load_settings(path=None):
 
 def save_settings(token, channel, path=None):
     token, channel = token.strip(), channel.strip()
-    if not token or not channel.isdecimal() or int(channel) <= 0:
-        raise SettingsError('Ingresá el token del bot y un ID de canal válido.')
+    if not token or (channel and (not channel.isdecimal() or int(channel) <= 0)):
+        raise SettingsError('Ingresá el token del bot y elegí una sala válida.')
     path = Path(path) if path is not None else settings_path()
     temporary = None
     try:

@@ -35,6 +35,7 @@ class DiscordMusicPlayer:
         self.thread.start()
         self.closed = False
         self.playback_generation = 0
+        self.on_audio_finished = None
 
     def _run(self):
         asyncio.set_event_loop(self.loop)
@@ -48,7 +49,7 @@ class DiscordMusicPlayer:
             self.loop.run_until_complete(self.loop.shutdown_asyncgens())
             self.loop.close()
 
-    def _submit(self, operation, message, token=''):
+    def _submit(self, operation, message, token='', success_kind='success'):
         if self.closed:
             operation.close()
             return
@@ -56,8 +57,8 @@ class DiscordMusicPlayer:
 
         def done(result):
             try:
-                result.result()
-                self.events.put(('success', message))
+                value = result.result()
+                self.events.put((success_kind, value if success_kind == 'channels' else message))
             except Exception as exc:
                 error = str(exc) or type(exc).__name__
                 if token:
@@ -71,6 +72,23 @@ class DiscordMusicPlayer:
 
     def test_sound(self, token, channel_id):
         self._submit(self._test_sound(token, channel_id), 'Enviando tono de prueba a Discord (3 segundos)', token)
+
+    def list_rooms(self, token):
+        self._submit(self._list_rooms(token), None, token, success_kind='channels')
+
+    async def _list_rooms(self, token):
+        await self._connect(token)
+        rooms = []
+        for guild in sorted(self.client.guilds, key=lambda g: (g.name.casefold(), g.id)):
+            if guild.me is None:
+                continue
+            for channel in guild.voice_channels:
+                permissions = channel.permissions_for(guild.me)
+                if permissions.view_channel and permissions.connect and permissions.speak:
+                    rooms.append({'id': str(channel.id), 'server': guild.name,
+                                  'category': channel.category.name if channel.category else '',
+                                  'name': channel.name})
+        return rooms
 
     async def _connect(self, token):
         import discord
@@ -203,6 +221,9 @@ class DiscordMusicPlayer:
         def finished(error):
             if generation != self.playback_generation:
                 return
+            callback = getattr(self, 'on_audio_finished', None)
+            if callback:
+                callback(generation, error is not None, checked.packets)
             if error:
                 self.events.put(('playback_error', 'Falló la transmisión de voz a Discord. Desconectá el bot y volvé a intentar.'))
             elif checked.packets == 0:

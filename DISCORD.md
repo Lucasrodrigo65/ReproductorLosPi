@@ -4,8 +4,8 @@
 
 1. Abrí el [portal de desarrolladores de Discord](https://discord.com/developers/applications), creá una aplicación y entrá en **Bot** para obtener su token. El token se pega únicamente en **Configurar bot** dentro del reproductor y se guarda cifrado con Windows para tu usuario.
 2. En **OAuth2 → URL Generator**, elegí el scope **bot** y los permisos **View Channels**, **Connect** y **Speak**. Abrí el enlace generado para invitar el bot a tu servidor. Necesitás permiso para administrar el servidor. No hacen falta intents privilegiados ni permiso de administrador.
-3. En Discord, activá **Ajustes de usuario → Avanzado → Modo desarrollador**. Hacé clic derecho sobre un canal de voz normal y elegí **Copiar ID del canal**.
-4. En el reproductor, abrí **Configurar bot**, pegá el token y el ID del canal y pulsá **Guardar**.
+3. En el reproductor, abrí **Configurar bot**, ingresá el token y pulsá **Guardar**. Se consultarán los canales de voz disponibles para el bot.
+4. Elegí el servidor y la sala en **Sala de voz**. La selección se guarda automáticamente; usá **Actualizar salas** para consultar los permisos y canales de nuevo.
 5. Seleccioná una canción en los resultados y pulsá **Reproducir en Discord**. También podés pegar una URL de YouTube y pulsar ese botón si no hay un resultado seleccionado. La selección de la lista tiene prioridad sobre la URL pegada.
 6. El bot entra al canal y reproduce la canción para todos. Otra canción enviada reemplaza la anterior. **Desconectar bot** detiene la música y retira el bot del canal. Al cerrar el programa se desconecta también.
 
@@ -48,9 +48,9 @@ Referencias: [crear e invitar un bot](https://discordpy.readthedocs.io/en/stable
 
 ## Recordar el token y el canal
 
-En **Configurar bot**, ingresá el token y el canal y pulsá **Guardar** una vez.
-Se recuperan automáticamente al abrir el reproductor. No hay ningún canal
-predeterminado: cada usuario ingresa el suyo. La app no conecta al bot hasta pulsar
+En **Configurar bot**, ingresá el token y pulsá **Guardar** una vez. Elegí el canal en **Sala de voz**.
+Se recuperan automáticamente al abrir el reproductor. La edición pública no tiene un canal
+predeterminado. La app no entra a la sala ni inicia audio hasta pulsar
 **Reproducir en Discord** o **Probar sonido**.
 
 La configuración se guarda en `%LOCALAPPDATA%/ReproductorLosPiPublic/discord.json`,
@@ -59,3 +59,16 @@ El token se cifra con DPAPI para el usuario de Windows actual; no se incluye en 
 `.exe` ni se escribe como texto visible en el archivo. Para cambiar el bot o el
 canal, editá los datos y pulsá **Guardar** otra vez. Si el archivo está dañado o
 Windows no puede descifrarlo, la app pide configurar nuevamente.
+
+
+## Selector de salas
+
+Al abrir la app con un token guardado se consulta la lista de salas. La consulta conecta
+el bot a Discord, pero no lo hace entrar a un canal de voz ni inicia audio.
+El selector muestra `Servidor / Categoría / Sala` y solo incluye canales normales con
+permisos Ver canal, Conectar y Hablar. Si no aparece una sala, revisá los permisos del bot
+y pulsá **Actualizar salas**.
+
+Elegir una sala guarda el destino. Al pulsar **Reproducir en Discord** o **Probar sonido**,
+el bot se conecta o se mueve a ese canal. La música actual no se mueve solo por cambiar
+la selección. Si la sala guardada dejó de estar disponible, se pide elegir otra.

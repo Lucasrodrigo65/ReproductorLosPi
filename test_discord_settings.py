@@ -36,6 +36,10 @@ class SettingsTests(unittest.TestCase):
     def test_missing_settings(self):
         self.assertEqual(load_settings(self.path), {})
 
+    def test_token_can_be_saved_before_selecting_a_room(self):
+        save_settings('dummy-token', '', self.path)
+        self.assertEqual(load_settings(self.path), {'token': 'dummy-token', 'channel_id': ''})
+
     def test_damaged_encrypted_token(self):
         save_settings('dummy-token', TEST_CHANNEL, self.path)
         payload = json.loads(self.path.read_text())

@@ -109,6 +109,30 @@ class DiscordPlaybackTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, 'silenciado'):
             await self.player._join_voice('test-token', 123)
 
+    async def test_lists_only_accessible_voice_rooms(self):
+        allowed = MagicMock()
+        allowed.id = 123
+        allowed.name = 'Sala disponible'
+        allowed.category.name = 'Voz'
+        allowed.permissions_for.return_value = SimpleNamespace(view_channel=True, connect=True, speak=True)
+        blocked = MagicMock()
+        blocked.permissions_for.return_value = SimpleNamespace(view_channel=True, connect=True, speak=False)
+        server = SimpleNamespace(id=1, name='Servidor', me=object(), voice_channels=[allowed, blocked])
+        self.player.client.guilds = [server]
+        rooms = await self.player._list_rooms('test-token')
+        self.assertEqual(rooms, [{'id': '123', 'server': 'Servidor', 'category': 'Voz', 'name': 'Sala disponible'}])
+
+    async def test_no_servers_returns_empty_room_list(self):
+        self.player.client.guilds = []
+        self.assertEqual(await self.player._list_rooms('test-token'), [])
+
+    async def test_changing_destination_moves_connected_bot(self):
+        self.voice.channel.id = 456
+        self.voice.move_to = AsyncMock()
+        result = await self.player._join_voice('test-token', 123)
+        self.voice.move_to.assert_awaited_once_with(self.channel)
+        self.assertIs(result, self.voice)
+
     async def test_invalid_login_closes_client(self):
         self.player.client = None
         client = MagicMock()

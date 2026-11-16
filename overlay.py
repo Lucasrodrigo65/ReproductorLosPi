@@ -20,7 +20,7 @@ except ImportError:
 try:
     import vlc
     VLC_OK = True
-except ImportError:
+except (ImportError, OSError):
     VLC_OK = False
 
 try:
@@ -34,7 +34,7 @@ class StreamingMusicPlayerEnhanced:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Reproductor de Discord de Los π")
-        self.root.geometry("660x720")
+        self.root.geometry("700x760")
         self.root.attributes('-alpha', 1.0)
         self.root.configure(bg='#1a1a1a')
         self.server_photo = None
@@ -62,12 +62,15 @@ class StreamingMusicPlayerEnhanced:
         self.discord_busy = False
         self.settings_error = None
         try:
-            saved_settings = load_settings()
+            saved_settings = self.read_discord_configuration()
         except SettingsError as exc:
             saved_settings = {}
             self.settings_error = str(exc)
         self.discord_token = tk.StringVar(value=saved_settings.get('token', ''))
         self.discord_channel = tk.StringVar(value=saved_settings.get('channel_id', DEFAULT_CHANNEL))
+        self.discord_room_name = tk.StringVar(value='Cargá las salas para elegir dónde reproducir')
+        self.discord_rooms = {}
+        self.discord_rooms_token = self.discord_token.get().strip()
         
         # Initialize VLC player
         if VLC_OK:
@@ -98,6 +101,8 @@ class StreamingMusicPlayerEnhanced:
         elif saved_settings:
             self.discord_status.config(text="Discord: configuración guardada cargada", fg='#aaa')
         self.root.after(100, self._poll_discord)
+        if self.discord_token.get().strip():
+            self.root.after(500, self.load_discord_rooms)
         
         # Setup window events
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -229,8 +234,9 @@ class StreamingMusicPlayerEnhanced:
             discord_frame, text="Reproducir en Discord", bg='#5865F2', fg='white',
             command=self.play_in_discord, relief=tk.FLAT, cursor='hand2', padx=10)
         self.discord_play_btn.pack(side=tk.LEFT)
-        tk.Button(discord_frame, text="Configurar bot", command=self.configure_discord,
-                  relief=tk.FLAT).pack(side=tk.LEFT, padx=6)
+        self.discord_config_btn = tk.Button(discord_frame, text="Configurar bot", command=self.configure_discord,
+                                            relief=tk.FLAT)
+        self.discord_config_btn.pack(side=tk.LEFT, padx=6)
         self.discord_disconnect_btn = tk.Button(
             discord_frame, text="Desconectar bot", command=self.disconnect_discord,
             relief=tk.FLAT)
@@ -238,6 +244,15 @@ class StreamingMusicPlayerEnhanced:
         self.discord_test_btn = tk.Button(
             discord_frame, text="Probar sonido", command=self.test_discord_sound, relief=tk.FLAT)
         self.discord_test_btn.pack(side=tk.LEFT, padx=4)
+        room_frame = tk.Frame(main, bg='#1a1a1a')
+        room_frame.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(room_frame, text="Sala de voz:", bg='#1a1a1a', fg='white').pack(side=tk.LEFT, padx=(0, 8))
+        self.discord_room_combo = ttk.Combobox(
+            room_frame, textvariable=self.discord_room_name, state='readonly', width=46)
+        self.discord_room_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.discord_room_combo.bind('<<ComboboxSelected>>', self.select_discord_room)
+        self.discord_rooms_btn = tk.Button(room_frame, text="Actualizar salas", command=self.load_discord_rooms)
+        self.discord_rooms_btn.pack(side=tk.RIGHT, padx=(8, 0))
         self.discord_status = tk.Label(main, text="Discord: sin conectar", bg='#1a1a1a',
                                        fg='#aaa', wraplength=570)
         self.discord_status.pack(fill=tk.X, pady=(0, 5))
@@ -368,29 +383,99 @@ class StreamingMusicPlayerEnhanced:
     def configure_discord(self):
         window = tk.Toplevel(self.root)
         window.title("Configurar bot de Discord")
-        window.geometry("510x280")
+        window.geometry("510x230")
         window.transient(self.root)
+        token_var = tk.StringVar(value=self.discord_token.get())
         tk.Label(window, text="Token del BOT (guardado cifrado para tu usuario de Windows):").pack(
             anchor='w', padx=15, pady=(15, 4))
-        tk.Entry(window, textvariable=self.discord_token, show='*', width=65).pack(padx=15)
-        tk.Label(window, text="ID del canal de voz:").pack(anchor='w', padx=15, pady=(12, 4))
-        tk.Entry(window, textvariable=self.discord_channel, width=65).pack(padx=15)
+        tk.Entry(window, textvariable=token_var, show='*', width=65).pack(padx=15)
         tk.Label(window, text="Invitá el bot a tu servidor con permisos Ver canal, Conectar y Hablar.\n"
-                 "Con el Modo desarrollador de Discord, clic derecho en el canal → Copiar ID.\n"
+                 "Al guardar, se cargarán las salas disponibles en el selector principal.\n"
                  "Ingresá el token aquí; no lo compartas por chat.",
                  wraplength=480, justify=tk.LEFT).pack(padx=15, pady=12)
         tk.Button(window, text="Portal de Discord", command=lambda: webbrowser.open(
             'https://discord.com/developers/applications')).pack(side=tk.LEFT, padx=15)
-        tk.Button(window, text="Guardar", command=lambda: self.save_discord_configuration(window)).pack(side=tk.RIGHT, padx=15)
+        tk.Button(window, text="Guardar", command=lambda: self.save_discord_configuration(window, token_var.get())).pack(side=tk.RIGHT, padx=15)
 
-    def save_discord_configuration(self, window):
+    def read_discord_configuration(self):
+        return load_settings()
+
+    def persist_discord_configuration(self, token, channel):
+        save_settings(token, channel)
+
+    def new_discord_player(self):
+        return DiscordMusicPlayer()
+
+    def handle_discord_event(self, kind, message):
+        return False
+
+    def save_discord_configuration(self, window, token=None):
+        if self.discord_busy:
+            messagebox.showinfo("Discord", "Esperá a que termine la operación actual.", parent=window)
+            return
+        token = self.discord_token.get().strip() if token is None else token.strip()
+        channel = self.discord_channel.get() if token == self.discord_token.get().strip() else ''
         try:
-            save_settings(self.discord_token.get(), self.discord_channel.get())
+            self.persist_discord_configuration(token, channel)
         except SettingsError as exc:
             messagebox.showerror("Configuración de Discord", str(exc), parent=window)
             return
+        self.discord_token.set(token)
+        self.discord_channel.set(channel)
         self.discord_status.config(text="Discord: token y canal guardados", fg='#4CAF50')
         window.destroy()
+        self.load_discord_rooms()
+
+    def load_discord_rooms(self):
+        if self.discord_busy:
+            return
+        token = self.discord_token.get().strip()
+        if not token:
+            self.configure_discord()
+            return
+        if token != self.discord_rooms_token:
+            self.discord_rooms.clear()
+            self.discord_channel.set('')
+            self.discord_room_combo.config(values=())
+            self.discord_room_name.set('Elegí una sala')
+        self.discord_rooms_token = token
+        if self.discord_player is None:
+            self.discord_player = self.new_discord_player()
+        self._set_discord_busy(True)
+        self.discord_status.config(text="Discord: consultando salas disponibles...", fg='orange')
+        self.discord_player.list_rooms(token)
+
+    def _populate_discord_rooms(self, rooms):
+        saved_channel = self.discord_channel.get()
+        self.discord_rooms = {}
+        for room in rooms:
+            base = ' / '.join(part for part in (room['server'], room['category'], room['name']) if part)
+            label, suffix = base, 2
+            while label in self.discord_rooms:
+                label = f'{base} ({suffix})'
+                suffix += 1
+            self.discord_rooms[label] = room['id']
+        self.discord_room_combo.config(values=list(self.discord_rooms))
+        selected = next((label for label, channel in self.discord_rooms.items() if channel == saved_channel), None)
+        self.discord_room_name.set(selected or 'Elegí una sala')
+        if selected is None:
+            self.discord_channel.set('')
+        self._set_discord_busy(False)
+        self.discord_status.config(
+            text=f'Discord: {len(rooms)} salas disponibles' if rooms else 'No hay salas accesibles. Revisá la invitación y los permisos del bot.',
+            fg='#4CAF50' if rooms else 'orange')
+
+    def select_discord_room(self, event=None):
+        channel = self.discord_rooms.get(self.discord_room_name.get())
+        if not channel:
+            return
+        self.discord_channel.set(channel)
+        try:
+            self.persist_discord_configuration(self.discord_token.get(), channel)
+        except SettingsError as exc:
+            messagebox.showerror("Configuración de Discord", str(exc))
+            return
+        self.discord_status.config(text="Sala elegida y guardada. Enviá una canción para reproducir ahí.", fg='#4CAF50')
 
     def _set_discord_busy(self, busy):
         self.discord_busy = busy
@@ -398,20 +483,26 @@ class StreamingMusicPlayerEnhanced:
         self.discord_play_btn.config(state=state)
         self.discord_disconnect_btn.config(state=state)
         self.discord_test_btn.config(state=state)
+        self.discord_config_btn.config(state=state)
+        self.discord_rooms_btn.config(state=state)
+        self.discord_room_combo.config(state='disabled' if busy else 'readonly')
 
     def test_discord_sound(self):
         if self.discord_busy:
             return
         token = self.discord_token.get().strip()
         channel = self.discord_channel.get().strip()
-        if not token or not channel:
+        if not token:
             self.configure_discord()
+            return
+        if not channel:
+            messagebox.showinfo("Discord", "Cargá las salas y elegí dónde reproducir.")
             return
         if not channel.isdecimal() or int(channel) <= 0:
             messagebox.showerror("Discord", "El ID del canal debe ser un número positivo.")
             return
         if self.discord_player is None:
-            self.discord_player = DiscordMusicPlayer()
+            self.discord_player = self.new_discord_player()
         self._set_discord_busy(True)
         self.discord_status.config(text="Discord: preparando tono de prueba...", fg='orange')
         self.discord_player.test_sound(token, int(channel))
@@ -421,8 +512,11 @@ class StreamingMusicPlayerEnhanced:
             return
         token = self.discord_token.get().strip()
         channel = self.discord_channel.get().strip()
-        if not token or not channel:
+        if not token:
             self.configure_discord()
+            return
+        if not channel:
+            messagebox.showinfo("Discord", "Cargá las salas y elegí dónde reproducir.")
             return
         if not channel.isdecimal() or int(channel) <= 0:
             messagebox.showerror("Discord", "El ID del canal debe ser un número positivo.")
@@ -441,7 +535,7 @@ class StreamingMusicPlayerEnhanced:
             messagebox.showinfo("Discord", "Seleccioná una canción o pegá una URL de YouTube.")
             return
         if self.discord_player is None:
-            self.discord_player = DiscordMusicPlayer()
+            self.discord_player = self.new_discord_player()
         self._set_discord_busy(True)
         self.discord_status.config(text="Discord: conectando y obteniendo audio...", fg='orange')
         self.discord_player.play(token, int(channel), f'https://www.youtube.com/watch?v={video_id}')
@@ -459,6 +553,11 @@ class StreamingMusicPlayerEnhanced:
                     kind, message = self.discord_player.events.get_nowait()
                 except queue.Empty:
                     break
+                if self.handle_discord_event(kind, message):
+                    continue
+                if kind == 'channels':
+                    self._populate_discord_rooms(message)
+                    continue
                 if kind in ('success', 'error'):
                     self._set_discord_busy(False)
                 self.discord_status.config(text=message, fg='red' if 'error' in kind else '#4CAF50')

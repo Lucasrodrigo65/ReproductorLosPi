@@ -8,6 +8,24 @@ Permite buscar música en YouTube, reproducirla en la PC y enviarla a un canal d
   <img src="assets/server.png" alt="Imagen del reproductor de Los π" width="180">
 </p>
 
+## Mismo bot desde varias PCs
+
+El modo compartido usa un servidor online como única conexión del bot a Discord.
+Las PCs se conectan por HTTPS con una clave de acceso; no necesitan el token del bot.
+Incluye cola común, pausa, siguiente y actualización de estado en todos los clientes.
+
+Leé [SHARED.md](SHARED.md) para desplegar el servidor y configurar los controles.
+El servidor usa `Dockerfile`, `requirements-server.txt` y `railway.json`.
+La app para los amigos se genera con:
+
+```powershell
+.\.venv\Scripts\python.exe -m PyInstaller --noconfirm shared.spec
+```
+
+El resultado es `dist/LosPiCompartido.exe`. Los pasos de bot local que siguen
+corresponden al modo original; no se debe ejecutar ese modo al mismo tiempo que el
+servidor online con el mismo token.
+
 ## Funciones
 
 - Búsqueda de canciones y reproducción mediante enlaces de YouTube.
@@ -100,7 +118,7 @@ También podés usar `build.bat` desde la carpeta del proyecto. Los archivos de 
 ## Pruebas
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest -v test_discord_player test_discord_settings
+.\.venv\Scripts\python.exe -m unittest -v test_discord_player test_discord_settings test_room_selector test_shared_server test_shared_desktop
 ```
 
 Las pruebas de voz usan conexiones simuladas. Las de configuración comprueban el cifrado real de Windows, la recuperación desde otro proceso y la conservación del archivo ante errores de guardado. La escucha real en Discord requiere una prueba con el bot configurado.
@@ -121,7 +139,7 @@ DISCORD.md                 Guía de configuración y diagnóstico
 
 ## Alcance actual
 
-- Reproduce una canción por vez en Discord; todavía no hay cola ni avance automático.
+- El modo original reproduce una canción por vez. El modo compartido agrega cola y avance automático.
 - Los controles locales de pausa, volumen y progreso no controlan el audio del bot.
 - Admite canales de voz normales; los canales de escenario no están soportados.
 - La extracción de audio depende de la disponibilidad del video y de los cambios de YouTube.
