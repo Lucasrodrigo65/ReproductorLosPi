@@ -42,6 +42,32 @@ class SharedController:
         self.media_dir = tempfile.TemporaryDirectory(prefix='lospi-audio-')
         self.uploads = {}
         self.uploading = set()
+        self.idle_since = time.monotonic()
+        self.idle_disconnected = False
+
+    async def check_idle(self, now=None):
+        """Leave voice after five minutes with no current track or queue."""
+        async with self.lock:
+            now = time.monotonic() if now is None else now
+            if self.current or self.pending:
+                self.idle_since = None
+                self.idle_disconnected = False
+                return
+            if self.idle_since is None:
+                self.idle_since = now
+            if not self.idle_disconnected and now - self.idle_since >= 300:
+                await self._stop_audio(leave=True)
+                self.idle_disconnected = True
+                self.revision += 1
+                log.info('Salida automática de voz tras 5 minutos sin canciones.')
+
+    async def idle_watchdog(self):
+        while not self.stopping:
+            await asyncio.sleep(1)
+            try:
+                await self.check_idle()
+            except Exception:
+                log.warning('No se pudo salir de voz por inactividad; se reintentará.')
 
     def discard_media(self, track):
         if track and track.get('upload_id'):
@@ -138,6 +164,8 @@ class SharedController:
         while self.pending:
             track = self.pending.popleft()
             self.current = track
+            self.idle_since = None
+            self.idle_disconnected = False
             self.paused = False
             self.revision += 1
             try:
@@ -155,6 +183,8 @@ class SharedController:
                 self.discard_media(track)
                 self.current = None
                 self.current_generation = None
+        if self.idle_since is None:
+            self.idle_since = time.monotonic()
         self.revision += 1
 
     async def _finish(self, generation, failed):
@@ -234,6 +264,7 @@ class SharedController:
                 self.discard_media(track)
             self.pending.clear()
             await self._stop_audio(leave=True)
+            self.idle_disconnected = True
             self.revision += 1
             message = 'Sesión detenida y cola vaciada'
         elif action in ('pause', 'resume'):
@@ -298,12 +329,17 @@ def create_app(controller, control_key):
         return web.json_response(result)
     async def cleanup(application):
         await controller.close()
+    async def start_idle_watchdog(application):
+        task = asyncio.create_task(controller.idle_watchdog())
+        controller.tasks.add(task)
+        task.add_done_callback(controller.tasks.discard)
     app.router.add_get('/healthz', health)
     app.router.add_get('/v1/state', state)
     app.router.add_get('/v1/rooms', rooms)
     app.router.add_post('/v1/commands/{action}', command)
     app.router.add_put('/v1/audio/{upload_id}', controller.upload)
     app.on_cleanup.append(cleanup)
+    app.on_startup.append(start_idle_watchdog)
     return app
 
 

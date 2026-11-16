@@ -55,6 +55,36 @@ class SharedServerTests(unittest.IsolatedAsyncioTestCase):
     async def play(self, channel='123', request_id=None):
         return await self.controller.command('play', {'channel_id': channel, 'url': URL, 'name': 'Amigo'}, request_id or str(uuid.uuid4()))
 
+    async def test_idle_leaves_voice_at_five_minutes_and_can_play_again(self):
+        from unittest.mock import AsyncMock
+        self.player.voice.disconnect = AsyncMock()
+        await self.play()
+        await self.controller._finish(self.controller.current_generation, False)
+        ended = self.controller.idle_since
+        await self.controller.check_idle(ended + 299)
+        self.player.voice.disconnect.assert_not_called()
+        await self.controller.check_idle(ended + 300)
+        self.player.voice.disconnect.assert_awaited_once_with(force=True)
+        await self.controller.check_idle(ended + 400)
+        self.player.voice.disconnect.assert_awaited_once()
+        await self.play()
+        self.assertFalse(self.controller.idle_disconnected)
+        self.assertIsNotNone(self.controller.current)
+
+    async def test_new_song_resets_idle_and_pause_keeps_session(self):
+        from unittest.mock import AsyncMock
+        self.player.voice.disconnect = AsyncMock()
+        self.controller.idle_since = 0
+        await self.play()
+        self.controller.paused = True
+        await self.controller.check_idle(1000)
+        self.player.voice.disconnect.assert_not_called()
+        self.assertIsNone(self.controller.idle_since)
+        await self.play()
+        await self.controller._finish(self.controller.current_generation, False)
+        await self.controller.check_idle(2000)
+        self.player.voice.disconnect.assert_not_called()
+
     async def test_concurrent_friends_share_one_playback_and_queue(self):
         await asyncio.gather(*(self.play() for _ in range(20)))
         self.assertEqual(len(self.player.calls), 1)

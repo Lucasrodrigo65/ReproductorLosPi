@@ -15,6 +15,8 @@ acceso al servidor. Cerrar una app no detiene la música para los demás.
 - Un solo bot reproduce en una sola sala. Mientras esté ocupado, los pedidos de otra
   sala se rechazan. Para cambiar, se detiene la sesión y se elige el nuevo destino.
 - El tono de prueba solo se permite cuando no hay una sesión activa.
+- El bot sale del canal de voz tras cinco minutos con la cola vacía y sin canción
+  actual. Una pista pausada conserva la sesión. Al agregar música vuelve a entrar.
 
 La cola es temporal: se vacía si el servidor se reinicia o se actualiza. Esta versión
 no usa una base de datos para conservar canciones pendientes.
