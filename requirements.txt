@@ -1,0 +1,9 @@
+yt-dlp>=2026.8.19
+python-vlc
+pynput
+# Keep these versions together: davey 0.2 changes the voice transition API.
+discord.py[voice]==2.7.1
+davey==0.1.7
+imageio-ffmpeg>=0.8.1,<1
+pyinstaller>=6.22.3
+pillow>=13.0.0
