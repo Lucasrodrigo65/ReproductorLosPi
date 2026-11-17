@@ -46,7 +46,7 @@ class StreamingMusicPlayerEnhanced:
             factor = max(1, (max(self.server_icon.width(), self.server_icon.height()) + 63) // 64)
             header_image = os.path.join(os.path.dirname(image_path), 'server-header.png')
             self.server_photo = tk.PhotoImage(file=header_image) if os.path.isfile(header_image) else self.server_icon.subsample(factor, factor)
-        
+
         # Variables
         self.playing = False
         self.paused = False
@@ -74,7 +74,7 @@ class StreamingMusicPlayerEnhanced:
         self.discord_room_name = tk.StringVar(value='Cargá las salas para elegir dónde reproducir')
         self.discord_rooms = {}
         self.discord_rooms_token = self.discord_token.get().strip()
-        
+
         # Initialize VLC player
         if VLC_OK:
             try:
@@ -93,10 +93,10 @@ class StreamingMusicPlayerEnhanced:
                 print(f"VLC initialization error: {e}")
         else:
             self.audio_initialized = False
-        
+
         # Setup hotkeys
         self.setup_hotkeys()
-        
+
         # Create interface
         self.create_ui()
         if self.settings_error:
@@ -106,16 +106,16 @@ class StreamingMusicPlayerEnhanced:
         self.root.after(100, self._poll_discord)
         if self.discord_token.get().strip():
             self.root.after(500, self.load_discord_rooms)
-        
+
         # Setup window events
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
+
         # Check dependencies
         if not YT_OK:
             self.show_install_message("yt-dlp")
         elif not VLC_OK:
             self.show_vlc_install_message()
-    
+
     def setup_hotkeys(self):
         """Setup global hotkeys"""
         self.root.after(50, self._poll_hotkey)
@@ -128,25 +128,25 @@ class StreamingMusicPlayerEnhanced:
         if not HOTKEY_OK:
             print("pynput no disponible - hotkeys deshabilitados")
             return
-        
+
         try:
             # Hotkey combination: Ctrl+Alt+M
             hotkey_combo = {keyboard.Key.ctrl, keyboard.Key.alt, keyboard.KeyCode.from_char('m')}
-            
+
             def on_hotkey():
                 # pynput runs outside Tk: only enqueue, never touch widgets here.
                 self.hotkey_events.put(True)
-            
+
             # Start hotkey listener
             self.hotkey_listener = keyboard.GlobalHotKeys({
                 '<ctrl>+<alt>+m': on_hotkey
             })
             self.hotkey_listener.start()
             print("Hotkey configurado: Ctrl+Alt+M para mostrar/ocultar")
-            
+
         except Exception as e:
             print(f"Error configurando hotkeys: {e}")
-    
+
     def _poll_hotkey(self):
         if self.hotkey_closed:
             return
@@ -178,16 +178,16 @@ class StreamingMusicPlayerEnhanced:
                 self.root.after(350, self._keep_overlay_above)
         except Exception as e:
             print(f"Error toggling window: {e}")
-    
+
     def create_ui(self):
         # Main frame
         main = tk.Frame(self.root, bg='#1a1a1a', padx=15, pady=15)
         main.pack(fill=tk.BOTH, expand=True)
-        
+
         # Title with status indicator
         title_frame = tk.Frame(main, bg='#1a1a1a')
         title_frame.pack(fill=tk.X, pady=(0,10))
-        
+
         if self.server_photo is not None:
             tk.Label(title_frame, image=self.server_photo, bg='#1a1a1a').pack(side=tk.LEFT, padx=(0, 12))
         else:
@@ -205,57 +205,57 @@ class StreamingMusicPlayerEnhanced:
         # Hotkey info
         hotkey_text = "⌨️ Ctrl+Alt+M para mostrar/ocultar" if HOTKEY_OK else "⌨️ Hotkeys no disponibles"
         hotkey_color = '#4CAF50' if HOTKEY_OK else '#888'
-        tk.Label(main, text=hotkey_text, font=('Arial', 8), 
+        tk.Label(main, text=hotkey_text, font=('Arial', 8),
                 fg=hotkey_color, bg='#1a1a1a').pack(pady=(0,10))
-        
+
         # URL input section
         url_frame = tk.Frame(main, bg='#1a1a1a')
         url_frame.pack(fill=tk.X, pady=(0,15))
-        
-        tk.Label(url_frame, text="🔗 URL Directa de YouTube:", font=('Arial', 10), 
+
+        tk.Label(url_frame, text="🔗 URL Directa de YouTube:", font=('Arial', 10),
                 fg='white', bg='#1a1a1a').pack(anchor=tk.W)
-        
+
         url_entry_frame = tk.Frame(url_frame, bg='#1a1a1a')
         url_entry_frame.pack(fill=tk.X, pady=(5,0))
-        
+
         self.url_var = tk.StringVar()
         self.url_entry = tk.Entry(url_entry_frame, textvariable=self.url_var,
                                  font=('Arial', 10), bg='#333', fg='white',
                                  insertbackground='white', relief=tk.FLAT, bd=6)
         self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0,10))
         self.url_entry.bind('<Return>', self.play_from_url)
-        
+
         self.url_btn = tk.Button(url_entry_frame, text="▶️ Reproducir URL", bg='#FF5722', fg='white',
-                                command=self.play_from_url, font=('Arial', 9, 'bold'), 
+                                command=self.play_from_url, font=('Arial', 9, 'bold'),
                                 relief=tk.FLAT, cursor='hand2', padx=10)
         self.url_btn.pack(side=tk.RIGHT)
-        
+
         # Separator
         separator = tk.Frame(main, height=2, bg='#333')
         separator.pack(fill=tk.X, pady=10)
-        
+
         # Search section
         search_frame = tk.Frame(main, bg='#1a1a1a')
         search_frame.pack(fill=tk.X, pady=(0,15))
-        
-        tk.Label(search_frame, text="🔍 Buscar en YouTube:", font=('Arial', 10), 
+
+        tk.Label(search_frame, text="🔍 Buscar en YouTube:", font=('Arial', 10),
                 fg='white', bg='#1a1a1a').pack(anchor=tk.W)
-        
+
         entry_frame = tk.Frame(search_frame, bg='#1a1a1a')
         entry_frame.pack(fill=tk.X, pady=(5,0))
-        
+
         self.search_var = tk.StringVar()
         self.search_entry = tk.Entry(entry_frame, textvariable=self.search_var,
                                    font=('Arial', 12), bg='#333', fg='white',
                                    insertbackground='white', relief=tk.FLAT, bd=8)
         self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0,10))
         self.search_entry.bind('<Return>', self.search)
-        
+
         self.search_btn = tk.Button(entry_frame, text="🔍 Buscar", bg='#4CAF50', fg='white',
-                                   command=self.search, font=('Arial', 10, 'bold'), 
+                                   command=self.search, font=('Arial', 10, 'bold'),
                                    relief=tk.FLAT, cursor='hand2', padx=15)
         self.search_btn.pack(side=tk.RIGHT)
-        
+
         discord_frame = tk.Frame(main, bg='#1a1a1a')
         discord_frame.pack(fill=tk.X, pady=(0, 10))
         self.discord_play_btn = tk.Button(
@@ -289,42 +289,42 @@ class StreamingMusicPlayerEnhanced:
         self.status = tk.Label(main, text="✅ Listo - Pega una URL o busca música",
                               font=('Arial', 10), fg='#4CAF50', bg='#1a1a1a')
         self.status.pack(pady=(0,10))
-        
+
         # Results list with scrollbar
         list_frame = tk.Frame(main, bg='#1a1a1a')
         list_frame.pack(fill=tk.BOTH, expand=True, pady=(0,15))
-        
+
         # Create treeview for better display
         columns = ('Title', 'Duration')
         self.tree = ttk.Treeview(list_frame, columns=columns, show='tree headings', height=6)
-        
+
         # Configure columns
         self.tree.heading('#0', text='#')
         self.tree.heading('Title', text='Título y Canal')
         self.tree.heading('Duration', text='Duración')
-        
+
         self.tree.column('#0', width=30, minwidth=30)
         self.tree.column('Title', width=350, minwidth=200)
         self.tree.column('Duration', width=80, minwidth=60)
-        
+
         # Scrollbar for treeview
         tree_scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=tree_scroll.set)
-        
+
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
+
         self.tree.bind('<Double-1>', self.play_selected)
-        
+
         # Progress and seek bar section
         progress_frame = tk.Frame(main, bg='#1a1a1a')
         progress_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.time_current_label = tk.Label(progress_frame, text="00:00", 
+
+        self.time_current_label = tk.Label(progress_frame, text="00:00",
                                            font=('Arial', 9, 'bold'), fg='#4CAF50', bg='#1a1a1a',
                                            width=5, anchor='e')
         self.time_current_label.pack(side=tk.LEFT, padx=(0, 6))
-        
+
         self.progress_var = tk.DoubleVar(value=0)
         self.progress_scale = tk.Scale(progress_frame, from_=0, to=100, orient=tk.HORIZONTAL,
                                        variable=self.progress_var, showvalue=False,
@@ -336,59 +336,59 @@ class StreamingMusicPlayerEnhanced:
         self.progress_scale.bind('<ButtonPress-1>', self.on_progress_press)
         self.progress_scale.bind('<B1-Motion>', self.on_progress_motion)
         self.progress_scale.bind('<ButtonRelease-1>', self.on_progress_release)
-        
-        self.time_total_label = tk.Label(progress_frame, text="00:00", 
+
+        self.time_total_label = tk.Label(progress_frame, text="00:00",
                                          font=('Arial', 9), fg='#888', bg='#1a1a1a',
                                          width=5, anchor='w')
         self.time_total_label.pack(side=tk.RIGHT, padx=(6, 0))
-        
+
         # Control buttons
         controls = tk.Frame(main, bg='#1a1a1a')
         controls.pack(fill=tk.X, pady=(0,10))
-        
+
         # Playback controls
         playback_frame = tk.Frame(controls, bg='#1a1a1a')
         playback_frame.pack(side=tk.LEFT)
-        
+
         self.rewind_btn = tk.Button(playback_frame, text="⏪", bg='#37474F', fg='white',
                                     font=('Arial', 14), command=lambda: self.rewind(10),
                                     relief=tk.FLAT, cursor='hand2', width=3, height=1)
         self.rewind_btn.pack(side=tk.LEFT, padx=(0,5))
-        
+
         self.play_btn = tk.Button(playback_frame, text="▶️", bg='#4CAF50', fg='white',
                                  font=('Arial', 16), command=self.toggle_play,
                                  relief=tk.FLAT, cursor='hand2', width=3, height=1)
         self.play_btn.pack(side=tk.LEFT, padx=(0,5))
-        
+
         tk.Button(playback_frame, text="⏹️", bg='#f44336', fg='white',
                  font=('Arial', 16), command=self.stop, relief=tk.FLAT,
                  cursor='hand2', width=3, height=1).pack(side=tk.LEFT, padx=(0,5))
-        
+
         self.forward_btn = tk.Button(playback_frame, text="⏩", bg='#37474F', fg='white',
                                      font=('Arial', 14), command=lambda: self.forward(10),
                                      relief=tk.FLAT, cursor='hand2', width=3, height=1)
         self.forward_btn.pack(side=tk.LEFT, padx=(0,5))
-        
+
         tk.Button(playback_frame, text="⏭️", bg='#2196F3', fg='white',
                  font=('Arial', 16), command=self.next_song, relief=tk.FLAT,
                  cursor='hand2', width=3, height=1).pack(side=tk.LEFT, padx=(0,5))
-        
+
         # Additional controls
         tk.Button(playback_frame, text="🌐", bg='#FF9800', fg='white',
                  font=('Arial', 16), command=self.open_in_browser, relief=tk.FLAT,
                  cursor='hand2', width=3, height=1).pack(side=tk.LEFT, padx=(0,5))
-        
+
         tk.Button(playback_frame, text="📋", bg='#9C27B0', fg='white',
                  font=('Arial', 16), command=self.paste_from_clipboard, relief=tk.FLAT,
                  cursor='hand2', width=3, height=1).pack(side=tk.LEFT)
-        
+
         # Volume control
         volume_frame = tk.Frame(controls, bg='#1a1a1a')
         volume_frame.pack(side=tk.RIGHT)
-        
-        tk.Label(volume_frame, text="🔊", fg='white', bg='#1a1a1a', 
+
+        tk.Label(volume_frame, text="🔊", fg='white', bg='#1a1a1a',
                 font=('Arial', 12)).pack(side=tk.LEFT, padx=(0,5))
-        
+
         self.volume_var = tk.DoubleVar(value=70)
         self.volume_scale = tk.Scale(volume_frame, from_=0, to=100, orient=tk.HORIZONTAL,
                                    variable=self.volume_var, command=self.change_volume,
@@ -396,18 +396,18 @@ class StreamingMusicPlayerEnhanced:
                                    troughcolor='#333', activebackground='#4CAF50',
                                    length=120, width=20)
         self.volume_scale.pack(side=tk.LEFT)
-        
+
         # Current song display
         self.current_label = tk.Label(main, text="🎵 Ninguna canción reproduciéndose",
                                      font=('Arial', 11, 'italic'), fg='#ccc', bg='#1a1a1a',
                                      wraplength=450, justify=tk.CENTER)
         self.current_label.pack(pady=(5,0))
-        
+
         # Tips
         tips_text = "Los π · Elegí una canción y compartila en Discord"
-        tk.Label(main, text=tips_text, font=('Arial', 8), 
+        tk.Label(main, text=tips_text, font=('Arial', 8),
                 fg='#888', bg='#1a1a1a').pack(pady=(5,0))
-    
+
     def configure_discord(self):
         window = tk.Toplevel(self.root)
         window.title("Configurar bot de Discord")
@@ -627,7 +627,7 @@ class StreamingMusicPlayerEnhanced:
         if not self.audio_initialized:
             messagebox.showerror("Error", "VLC no está disponible!")
             return
-        
+
         if not YT_OK:
             self.show_install_message("yt-dlp")
             return
@@ -636,18 +636,18 @@ class StreamingMusicPlayerEnhanced:
         if not url:
             messagebox.showwarning("URL Vacía", "Por favor ingresa una URL de YouTube")
             return
-        
+
         if not self.is_youtube_url(url):
             messagebox.showerror("URL Inválida", "Por favor ingresa una URL válida de YouTube")
             return
-        
+
         self.status.config(text="🔗 Procesando URL directa...", fg='orange')
         self.url_btn.config(state='disabled', text="Procesando...")
-        
+
         url = f"https://www.youtube.com/watch?v={self.extract_video_id(url)}"
         # Process URL in separate thread
         threading.Thread(target=self._process_url_thread, args=(url,), daemon=True).start()
-    
+
     def _process_url_thread(self, url):
         try:
             opts = {
@@ -656,10 +656,10 @@ class StreamingMusicPlayerEnhanced:
                 'format': 'bestaudio/best',
                 'noplaylist': True,
             }
-            
+
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-                
+
                 if info:
                     result = {
                         'title': info.get('title', 'Título Desconocido'),
@@ -669,26 +669,26 @@ class StreamingMusicPlayerEnhanced:
                         'id': info.get('id', ''),
                         'stream_url': None
                     }
-                    
+
                     # Add to results for next/previous functionality
                     self.results = [result]
                     self.current_index = 0
-                    
+
                     # Stream the audio
                     self.root.after(0, lambda: self.stream_audio(result))
                 else:
                     self.root.after(0, lambda: self._url_error("No se pudo obtener información del video"))
-            
+
         except Exception as e:
             error_msg = str(e)
             self.root.after(0, lambda: self._url_error(error_msg))
 
-    
+
     def _url_error(self, error):
         self.status.config(text="❌ Error procesando URL", fg='red')
         self.url_btn.config(state='normal', text="▶️ Reproducir URL")
         messagebox.showerror("Error de URL", f"Error procesando URL: {error}")
-    
+
     def paste_from_clipboard(self):
         """Paste URL from clipboard"""
         try:
@@ -700,13 +700,13 @@ class StreamingMusicPlayerEnhanced:
                 messagebox.showwarning("Portapapeles", "El portapapeles no contiene una URL válida de YouTube")
         except tk.TclError:
             messagebox.showwarning("Portapapeles", "El portapapeles está vacío")
-    
+
     def show_install_message(self, package):
         """Show message if package is missing"""
         self.status.config(text=f"❌ Instala: pip install {package}", fg='red')
-        messagebox.showerror("Dependencia Faltante", 
+        messagebox.showerror("Dependencia Faltante",
                            f"{package} es requerido.\n\nInstala con: pip install {package}")
-    
+
     def show_vlc_install_message(self):
         """Show VLC installation message"""
         self.status.config(text="❌ VLC Python requerido para streaming", fg='red')
@@ -716,29 +716,29 @@ class StreamingMusicPlayerEnhanced:
 2. Python VLC bindings: pip install python-vlc
 
 ¿Quieres abrir la página de descarga de VLC?"""
-        
+
         if messagebox.askyesno("VLC Requerido", msg):
             webbrowser.open("https://www.videolan.org/vlc/")
-    
+
     def search(self, event=None):
         if not YT_OK:
             messagebox.showerror("Error", "yt-dlp no está instalado!")
             return
-        
+
         query = self.search_var.get().strip()
         if not query:
             return
-        
+
         self.status.config(text="🔍 Buscando en YouTube...", fg='orange')
         self.search_btn.config(state='disabled', text="Buscando...")
-        
+
         # Clear previous results
         for item in self.tree.get_children():
             self.tree.delete(item)
-        
+
         # Search in separate thread
         threading.Thread(target=self._search_thread, args=(query,), daemon=True).start()
-    
+
     def _search_thread(self, query):
         try:
             opts = {
@@ -752,22 +752,22 @@ class StreamingMusicPlayerEnhanced:
                 'ignoreerrors': True,
                 'extract_info': True
             }
-            
+
             with yt_dlp.YoutubeDL(opts) as ydl:
                 search_query = f"ytsearch5:{query}"
                 info = ydl.extract_info(search_query, download=False)
-                
+
                 self.results = []
                 if info and 'entries' in info:
                     for entry in info['entries']:
                         if entry and entry.get('title'):
                             video_id = entry.get('id', '')
                             webpage_url = entry.get('webpage_url', '')
-                            
+
                             # If webpage_url is empty, construct it from video ID
                             if not webpage_url and video_id:
                                 webpage_url = f"https://www.youtube.com/watch?v={video_id}"
-                            
+
                             self.results.append({
                                 'title': entry.get('title', 'Título Desconocido'),
                                 'uploader': entry.get('uploader', 'Desconocido'),
@@ -776,52 +776,52 @@ class StreamingMusicPlayerEnhanced:
                                 'id': video_id,
                                 'stream_url': None
                             })
-                    
+
                     print(f"Encontrados {len(self.results)} resultados")
                 else:
                     print("No se encontraron resultados")
-                
+
                 self.root.after(0, self._update_results)
-                
+
         except Exception as e:
             print(f"Error en búsqueda: {e}")
             error_msg = str(e)
             self.root.after(0, lambda: self._search_error(error_msg))
 
-    
+
     def _update_results(self):
         # Clear tree
         for item in self.tree.get_children():
             self.tree.delete(item)
-        
+
         # Add results
         for i, result in enumerate(self.results):
             duration = self._format_duration(result.get('duration', 0))
             title_info = f"{result['title']} - {result['uploader']}"
-            
-            self.tree.insert('', 'end', text=str(i+1), 
+
+            self.tree.insert('', 'end', text=str(i+1),
                            values=(title_info, duration))
-        
+
         self.status.config(text=f"✅ Encontradas {len(self.results)} canciones", fg='green')
         self.search_btn.config(state='normal', text="🔍 Buscar")
-    
+
     def _format_duration(self, seconds):
         """Format duration in MM:SS format, handling None and invalid values"""
         try:
             # Handle None or invalid values
             if not seconds or seconds == 0:
                 return "Desconocido"
-            
+
             # Convert to int to handle float values
             seconds = int(seconds)
             minutes = seconds // 60
             seconds = seconds % 60
-            
+
             return f"{minutes}:{seconds:02d}"
         except (ValueError, TypeError):
             # Fallback for any conversion errors
             return "Desconocido"
-    
+
     def _format_time(self, seconds):
         """Format seconds into MM:SS or HH:MM:SS"""
         try:
@@ -903,46 +903,46 @@ class StreamingMusicPlayerEnhanced:
         current_sec = (current_ms // 1000) if current_ms > 0 else self.progress_var.get()
         self.seek_to(max(0, current_sec - seconds))
 
-    
+
     def _search_error(self, error):
         self.status.config(text="❌ Error en la búsqueda", fg='red')
         self.search_btn.config(state='normal', text="🔍 Buscar")
         messagebox.showerror("Error de Búsqueda", f"Falló la búsqueda: {error}")
-    
+
     def play_selected(self, event=None):
         if not self.audio_initialized:
             messagebox.showerror("Error", "VLC no está disponible para streaming!")
             return
-        
+
         selection = self.tree.selection()
         if not selection or not self.results:
             return
-        
+
         # Get selected index
         item = self.tree.item(selection[0])
         index = int(item['text']) - 1
-        
+
         if 0 <= index < len(self.results):
             self.current_index = index
             self.stream_audio(self.results[index])
-    
+
     def stream_audio(self, result):
         if not self.audio_initialized:
             messagebox.showerror("Error", "Sistema de audio no disponible!")
             return
-        
+
         self.status.config(text="🌐 Obteniendo URL de streaming...", fg='orange')
         self.play_btn.config(state='disabled')
-        
+
         # Get stream URL in separate thread
         threading.Thread(target=self._get_stream_thread, args=(result,), daemon=True).start()
-    
+
     def _get_stream_thread(self, result):
         try:
             if not result.get('url'):
                 self.root.after(0, lambda: self._stream_error("URL de video vacía"))
                 return
-            
+
             video_id = result['id']
             if video_id in self.url_cache:
                 stream_url = self.url_cache[video_id]
@@ -957,10 +957,10 @@ class StreamingMusicPlayerEnhanced:
                 'skip_download': True,
                 'noplaylist': True
             }
-            
+
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(result['url'], download=False)
-                
+
                 # Use the format selected by yt-dlp, not the first format listed.
                 stream_url = info.get('url') if info else None
 
@@ -969,27 +969,27 @@ class StreamingMusicPlayerEnhanced:
                     self.root.after(0, lambda: self._play_stream(stream_url, result))
                 else:
                     self.root.after(0, lambda: self._stream_error("No se encontró URL de streaming"))
-            
+
         except Exception as e:
             error_msg = str(e)
             self.root.after(0, lambda: self._stream_error(error_msg))
 
-    
+
     def _play_stream(self, stream_url, result):
         try:
             # Stop current playback
             if self.player:
                 self.player.stop()
-            
+
             # Create media and play
             media = self.vlc_instance.media_new(stream_url)
             self.player.set_media(media)
             self.player.play()
-            
+
             self.playing = True
             self.paused = False
             self.current_url = result['url']
-            
+
             # Setup duration & progress bar
             raw_duration = result.get('duration', 0) or 0
             self.current_total_duration = int(raw_duration) if raw_duration else 0
@@ -997,20 +997,20 @@ class StreamingMusicPlayerEnhanced:
             self.progress_var.set(0)
             self.time_current_label.config(text="00:00")
             self.time_total_label.config(text=self._format_time(self.current_total_duration) if self.current_total_duration > 0 else "--:--")
-            
+
             self.play_btn.config(text="⏸️", state='normal')
             self.url_btn.config(state='normal', text="▶️ Reproducir URL")
             self.status.config(text="🎵 Reproduciendo en streaming", fg='green')
-            
+
             # Show current song info
             self.current_label.config(text=f"🎵 {result['title']} [STREAMING]")
-            
+
             # Start monitoring
             self._monitor_playback()
-            
+
         except Exception as e:
             self._stream_error(f"Error de reproducción: {e}")
-    
+
     def _stream_error(self, error):
         self.status.config(text="❌ Error de streaming", fg='red')
         self.play_btn.config(state='normal')
@@ -1018,7 +1018,7 @@ class StreamingMusicPlayerEnhanced:
         self.progress_var.set(0)
         self.time_current_label.config(text="00:00")
         messagebox.showerror("Error de Streaming", f"No se puede reproducir:\n{error}")
-    
+
     def _monitor_playback(self):
         """Monitor playback status and update progress bar"""
         if self.playing and self.player:
@@ -1031,7 +1031,7 @@ class StreamingMusicPlayerEnhanced:
                 elif state == vlc.State.Error:
                     self._stream_error("Error durante la reproducción")
                     return
-                
+
                 # Check dynamic duration from VLC if not set or updated
                 length_ms = self.player.get_length()
                 if length_ms > 0:
@@ -1040,7 +1040,7 @@ class StreamingMusicPlayerEnhanced:
                         self.current_total_duration = vlc_duration
                         self.progress_scale.config(to=self.current_total_duration)
                         self.time_total_label.config(text=self._format_time(self.current_total_duration))
-                
+
                 # Update progress slider and current time
                 current_ms = self.player.get_time()
                 if current_ms >= 0 and not self.is_dragging_progress:
@@ -1049,15 +1049,15 @@ class StreamingMusicPlayerEnhanced:
                     self.time_current_label.config(text=self._format_time(current_sec))
             except Exception as e:
                 print(f"Error en monitor: {e}")
-            
+
             if self.playing and not self.paused:
                 # Continue monitoring every 500ms
                 self.root.after(500, self._monitor_playback)
-    
+
     def toggle_play(self):
         if not self.player or not self.audio_initialized:
             return
-        
+
         try:
             if self.playing and not self.paused:
                 self.player.pause()
@@ -1072,11 +1072,11 @@ class StreamingMusicPlayerEnhanced:
                 self._monitor_playback()
         except Exception as e:
             self._stream_error(f"Error de control: {e}")
-    
+
     def stop(self):
         if not self.audio_initialized or not self.player:
             return
-        
+
         try:
             self.player.stop()
             self.playing = False
@@ -1091,40 +1091,40 @@ class StreamingMusicPlayerEnhanced:
             self.time_total_label.config(text="00:00")
         except Exception as e:
             print(f"Error al detener: {e}")
-    
+
     def next_song(self):
         """Play next song in the list"""
         if not self.results:
             return
-        
+
         if self.current_index >= 0:
             next_index = (self.current_index + 1) % len(self.results)
         else:
             next_index = 0
-        
+
         self.current_index = next_index
         self.stream_audio(self.results[next_index])
-        
+
         # Highlight current song in tree
         for item in self.tree.get_children():
             if int(self.tree.item(item)['text']) - 1 == next_index:
                 self.tree.selection_set(item)
                 self.tree.focus(item)
                 break
-    
+
     def open_in_browser(self):
         """Open current song in browser"""
         if self.current_url:
             webbrowser.open(self.current_url)
         else:
             messagebox.showinfo("Info", "No hay canción seleccionada")
-    
+
     def change_volume(self, value):
         """Change volume"""
         if self.audio_initialized and self.player:
             volume = int(float(value))
             self.player.audio_set_volume(volume)
-    
+
     def on_closing(self):
         """Handle window closing"""
         if messagebox.askquestion("Cerrar", "¿Quieres cerrar el reproductor?\n\n(Puedes usar Ctrl+Alt+M para ocultarlo)") == 'yes':
@@ -1133,7 +1133,7 @@ class StreamingMusicPlayerEnhanced:
         else:
             # Just hide the window instead of closing
             self.toggle_window()
-    
+
     def cleanup(self):
         """Cleanup resources"""
         self.hotkey_closed = True
@@ -1144,7 +1144,7 @@ class StreamingMusicPlayerEnhanced:
             self.player.stop()
         if self.hotkey_listener:
             self.hotkey_listener.stop()
-    
+
     def run(self):
         try:
             self.root.mainloop()
