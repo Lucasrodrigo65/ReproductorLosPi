@@ -305,8 +305,10 @@ def create_app(controller, control_key):
     async def guard(request, handler):
         if request.path != '/healthz':
             provided = request.headers.get('Authorization', '')
+            admin = request.path.startswith('/v1/admin/')
             scoped = controller.resolve_key(provided) if multi else controller
-            if scoped is None or (not multi and not hmac.compare_digest(provided.encode(), ('Bearer ' + control_key).encode())):
+            authorized = controller.is_admin(provided) if admin and multi else (not admin and scoped is not None and (multi or hmac.compare_digest(provided.encode(), ('Bearer ' + control_key).encode())))
+            if not authorized:
                 return web.json_response({'error': 'Clave de acceso incorrecta.'}, status=401)
             request['session_controller'] = scoped
         try:
@@ -334,6 +336,11 @@ def create_app(controller, control_key):
         return web.json_response(result)
     async def upload(request):
         return await request['session_controller'].upload(request)
+    async def admin_guilds(request):
+        return web.json_response(await controller.admin_guilds())
+    async def admin_register(request):
+        status, result = await controller.register_guild(await request.json())
+        return web.json_response(result, status=status)
     async def cleanup(application):
         await controller.close()
     async def start_idle_watchdog(application):
@@ -345,6 +352,8 @@ def create_app(controller, control_key):
     app.router.add_get('/v1/rooms', rooms)
     app.router.add_post('/v1/commands/{action}', command)
     app.router.add_put('/v1/audio/{upload_id}', upload)
+    app.router.add_get('/v1/admin/guilds', admin_guilds)
+    app.router.add_post('/v1/admin/guilds', admin_register)
     app.on_cleanup.append(cleanup)
     app.on_startup.append(start_idle_watchdog)
     return app
@@ -373,6 +382,7 @@ def single_instance():
 
 def main():
     from multi_guild import MultiGuildController, parse_guild_keys
+    from guild_registry import GuildRegistry
     token = os.environ.get('DISCORD_BOT_TOKEN', '').strip()
     key = os.environ.get('CONTROL_KEY', '').strip()
     guild_keys = parse_guild_keys(os.environ.get('GUILD_ACCESS_KEYS', ''), key, os.environ.get('ALLOWED_GUILD_IDS', ''))
@@ -381,7 +391,12 @@ def main():
     lock = single_instance()
     async def application():
         player = DiscordMusicPlayer()
-        controller = MultiGuildController(player, token, asyncio.get_running_loop(), guild_keys, session_factory=SharedController)
+        registry_path = os.environ.get('GUILD_REGISTRY_PATH', '')
+        admin_key = os.environ.get('ADMIN_KEY', '').strip()
+        if admin_key and not registry_path:
+            raise ValueError('ADMIN_KEY requiere GUILD_REGISTRY_PATH persistente.')
+        registry = GuildRegistry(registry_path) if registry_path else None
+        controller = MultiGuildController(player, token, asyncio.get_running_loop(), guild_keys, session_factory=SharedController, registry=registry, admin_key=admin_key)
         return create_app(controller, key)
     try:
         logging.basicConfig(level=logging.INFO)

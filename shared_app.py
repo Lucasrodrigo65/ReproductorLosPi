@@ -43,10 +43,15 @@ class SharedDesktopPlayer(StreamingMusicPlayerEnhanced):
         self.shared_skip_btn.pack(side=tk.LEFT, padx=(0, 8))
         self.shared_pause_btn = tk.Button(controls, text='Pausar en Discord', command=self.shared_pause)
         self.shared_pause_btn.pack(side=tk.LEFT)
+        tk.Button(controls, text='Administrar servidores', command=self.manage_servers).pack(side=tk.RIGHT)
         self.shared_queue = tk.Label(self.root, text='Conectate al servidor compartido para ver la cola.',
                                      bg='#1a1a1a', fg='#ccc', justify=tk.LEFT, anchor='w',
                                      wraplength=710, padx=15, pady=10)
         self.shared_queue.pack(fill=tk.X)
+
+    def manage_servers(self):
+        from server_admin import ServerAdminWindow
+        ServerAdminWindow(self.root, self.connection.get('url', ''))
 
     def configure_discord(self):
         window = tk.Toplevel(self.root)

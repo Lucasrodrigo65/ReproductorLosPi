@@ -17,6 +17,26 @@ servicio: no se convierte en acceso global accidentalmente.
 
 ## Agregar otro servidor
 
+Desde el reproductor actualizado, usar **Administrar servidores**. Solo el dueño
+usa ADMIN_KEY, una credencial distinta de las claves de reproducción. Se guarda
+cifrada con Windows DPAPI en administration.json del perfil local, separada de
+connection.json; no compartir ese archivo ni la clave de administración.
+
+1. Conectar como administrador y pulsar **Invitar al bot**.
+2. Autorizarlo en el nuevo Discord y actualizar la lista de servidores.
+3. Elegir el servidor marcado como nuevo y pulsar **Habilitar servidor y generar su clave**.
+4. Copiar la conexión y compartirla por privado con ese grupo antes de cerrar la ventana.
+
+El alta es inmediata: no reinicia el bot ni vacía colas. Los servidores ya
+habilitados conservan su clave. La aplicación genera una clave aleatoria segura;
+el servidor guarda solo su hash en SQLite, en GUILD_REGISTRY_PATH sobre un volumen
+persistente propio. ADMIN_KEY se configura una sola vez como secreto del servicio.
+El registro debe respaldarse junto con las variables privadas del servicio.
+La clave administrativa no sirve para reproducir música y las claves de grupos
+no permiten administrar. No incluir ninguna credencial en el ejecutable o ZIP.
+
+### Configuración manual alternativa
+
 1. Invitar al bot y darle Ver canal, Conectar y Hablar en las salas deseadas.
 2. Generar una clave aleatoria distinta para ese grupo (mínimo 32 caracteres).
 3. En las variables privadas del servicio de música en Railway, definir
