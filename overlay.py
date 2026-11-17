@@ -7,6 +7,7 @@ import sys
 import os
 import re
 import queue
+from window_hotkey import WindowsHotkey, is_foreground, promote
 from discord_player import DiscordMusicPlayer
 from discord_settings import DEFAULT_CHANNEL, SettingsError, load_settings, save_settings
 from urllib.parse import urlparse, parse_qs
@@ -55,6 +56,8 @@ class StreamingMusicPlayerEnhanced:
         self.player = None
         self.is_visible = True
         self.hotkey_listener = None
+        self.hotkey_events = queue.Queue()
+        self.hotkey_closed = False
         self.url_cache = {}  # Cache para URLs de streaming
         self.current_total_duration = 0
         self.is_dragging_progress = False
@@ -115,6 +118,13 @@ class StreamingMusicPlayerEnhanced:
     
     def setup_hotkeys(self):
         """Setup global hotkeys"""
+        self.root.after(50, self._poll_hotkey)
+        if os.name == 'nt':
+            try:
+                self.hotkey_listener = WindowsHotkey()
+                return
+            except OSError as exc:
+                print(f'Atajo de Windows no disponible: {exc}; usando alternativa.')
         if not HOTKEY_OK:
             print("pynput no disponible - hotkeys deshabilitados")
             return
@@ -124,7 +134,8 @@ class StreamingMusicPlayerEnhanced:
             hotkey_combo = {keyboard.Key.ctrl, keyboard.Key.alt, keyboard.KeyCode.from_char('m')}
             
             def on_hotkey():
-                self.toggle_window()
+                # pynput runs outside Tk: only enqueue, never touch widgets here.
+                self.hotkey_events.put(True)
             
             # Start hotkey listener
             self.hotkey_listener = keyboard.GlobalHotKeys({
@@ -136,18 +147,35 @@ class StreamingMusicPlayerEnhanced:
         except Exception as e:
             print(f"Error configurando hotkeys: {e}")
     
+    def _poll_hotkey(self):
+        if self.hotkey_closed:
+            return
+        pressed = isinstance(self.hotkey_listener, WindowsHotkey) and self.hotkey_listener.pending()
+        while not self.hotkey_events.empty():
+            self.hotkey_events.get_nowait()
+            pressed = True
+        if pressed:
+            self.toggle_window()
+        self.root.after(50, self._poll_hotkey)
+
+    def _keep_overlay_above(self):
+        if not self.hotkey_closed and self.is_visible and self.root.state() != 'withdrawn':
+            promote(self.root, activate=False)
+
     def toggle_window(self):
         """Toggle window visibility"""
         try:
-            if self.is_visible:
+            if self.is_visible and self.root.state() not in ('iconic', 'withdrawn') and is_foreground(self.root):
+                self.root.attributes('-topmost', False)
                 self.root.withdraw()  # Hide window
                 self.is_visible = False
             else:
                 self.root.deiconify()  # Show window
-                self.root.lift()  # Bring to front
-                self.root.attributes('-topmost', True)
-                self.root.after(100, lambda: self.root.attributes('-topmost', False))
                 self.is_visible = True
+                self.root.update_idletasks()
+                promote(self.root)
+                self.root.after(100, self._keep_overlay_above)
+                self.root.after(350, self._keep_overlay_above)
         except Exception as e:
             print(f"Error toggling window: {e}")
     
@@ -1108,6 +1136,7 @@ class StreamingMusicPlayerEnhanced:
     
     def cleanup(self):
         """Cleanup resources"""
+        self.hotkey_closed = True
         if self.discord_player is not None:
             self.discord_player.close()
             self.discord_player.thread.join(timeout=5)
