@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certi
 WORKDIR /app
 COPY requirements-server.txt .
 RUN pip install --no-cache-dir -r requirements-server.txt
-COPY discord_player.py shared_server.py ./
+COPY discord_player.py shared_server.py multi_guild.py ./
 RUN useradd --create-home lospi
 USER lospi
 EXPOSE 8080

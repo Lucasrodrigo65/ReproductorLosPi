@@ -36,6 +36,9 @@ class DiscordMusicPlayer:
         self.closed = False
         self.playback_generation = 0
         self.on_audio_finished = None
+        self.multi_guild = False
+        self.voice_generations = {}
+        self.on_guild_audio_finished = None
 
     def _run(self):
         asyncio.set_event_loop(self.loop)
@@ -155,7 +158,7 @@ class DiscordMusicPlayer:
             voice = await channel.connect(timeout=30, reconnect=True, self_deaf=True)
         # Keep this desktop player in a single voice channel at a time.
         for other in list(self.client.voice_clients):
-            if other is not voice:
+            if not getattr(self, 'multi_guild', False) and other is not voice:
                 await other.disconnect(force=True)
         state = channel.guild.me.voice
         if state and (state.mute or state.suppress):
@@ -230,7 +233,18 @@ class DiscordMusicPlayer:
         checked = MonitoredAudio(source)
         self.playback_generation += 1
         generation = self.playback_generation
+        guild_id = voice.guild.id if getattr(self, 'multi_guild', False) else None
+        if guild_id is not None:
+            generation = self.voice_generations.get(guild_id, 0) + 1
+            self.voice_generations[guild_id] = generation
         def finished(error):
+            if guild_id is not None:
+                if generation != self.voice_generations.get(guild_id):
+                    return
+                callback = self.on_guild_audio_finished
+                if callback:
+                    callback(guild_id, generation, error is not None, checked.packets)
+                return
             if generation != self.playback_generation:
                 return
             callback = getattr(self, 'on_audio_finished', None)
@@ -254,6 +268,8 @@ class DiscordMusicPlayer:
 
     async def _disconnect(self):
         self.playback_generation = getattr(self, 'playback_generation', 0) + 1
+        for guild_id in getattr(self, 'voice_generations', {}):
+            self.voice_generations[guild_id] += 1
         if self.client:
             try:
                 for voice in list(self.client.voice_clients):

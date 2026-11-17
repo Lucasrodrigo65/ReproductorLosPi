@@ -6,20 +6,23 @@ acceso al servidor. Cerrar una app no detiene la música para los demás.
 
 ## Comportamiento compartido
 
-- Cada pedido agrega una canción a una cola común, con el nombre de quien la pidió.
+- Cada pedido agrega una canción a la cola de su servidor, con el nombre de quien la pidió.
 - Los pedidos simultáneos se procesan de uno en uno; no crean conexiones paralelas.
 - Un pedido reenviado por una interrupción de red no agrega una canción duplicada.
 - La cola avanza automáticamente al terminar una pista.
 - Todos ven la canción actual, el estado de pausa y las próximas tres canciones.
 - Todos los que tienen la clave pueden pausar, continuar, saltar y detener la sesión.
-- Un solo bot reproduce en una sola sala. Mientras esté ocupado, los pedidos de otra
-  sala se rechazan. Para cambiar, se detiene la sesión y se elige el nuevo destino.
+- El bot puede reproducir simultáneamente en varios servidores, en una sala por
+  servidor. Las claves, colas y controles están aislados entre grupos. Para cambiar
+  de sala dentro del mismo servidor, se detiene su sesión y se elige otro destino.
 - El tono de prueba solo se permite cuando no hay una sesión activa.
 - El bot sale del canal de voz tras cinco minutos con la cola vacía y sin canción
   actual. Una pista pausada conserva la sesión. Al agregar música vuelve a entrar.
 
 La cola es temporal: se vacía si el servidor se reinicia o se actualiza. Esta versión
 no usa una base de datos para conservar canciones pendientes.
+
+Ver [MULTI_SERVER.md](MULTI_SERVER.md) para habilitar otros servidores sin mezclar sesiones.
 
 ## Servidor online
 
@@ -31,8 +34,9 @@ Variables del servidor:
 | Variable | Uso |
 | --- | --- |
 | `DISCORD_BOT_TOKEN` | Token del bot, ingresado como secreto en el proveedor de hosting. |
-| `CONTROL_KEY` | Clave aleatoria de al menos 32 caracteres que se comparte con los amigos. |
-| `ALLOWED_GUILD_IDS` | Opcional: IDs de servidores autorizados, separados por comas. Vacío permite los servidores a los que pertenece el bot. |
+| `CONTROL_KEY` | Clave existente de un único servidor, asociado con ALLOWED_GUILD_IDS. |
+| `ALLOWED_GUILD_IDS` | Un único ID para la clave heredada CONTROL_KEY; no admite acceso global. |
+| `GUILD_ACCESS_KEYS` | JSON privado que asigna IDs de servidores a claves distintas. Ver MULTI_SERVER.md. |
 | `PORT` | Puerto HTTP asignado por el proveedor; por defecto 8080. |
 
 El token y la clave no se escriben en el repositorio ni dentro del ejecutable.

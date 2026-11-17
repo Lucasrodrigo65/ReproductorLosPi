@@ -25,8 +25,9 @@ class ControlError(Exception):
 
 
 class SharedController:
-    def __init__(self, player, token, loop, allowed_guilds=()):
+    def __init__(self, player, token, loop, allowed_guilds=(), owns_player=True):
         self.player, self.token, self.loop = player, token, loop
+        self.owns_player = owns_player
         self.allowed_guilds = {str(value) for value in allowed_guilds}
         self.lock = asyncio.Lock()
         self.pending = deque()
@@ -55,7 +56,7 @@ class SharedController:
                 return
             if self.idle_since is None:
                 self.idle_since = now
-            if not self.idle_disconnected and now - self.idle_since >= 300:
+            if not self.idle_disconnected and now >= self.idle_since + 300:
                 await self._stop_audio(leave=True)
                 self.idle_disconnected = True
                 self.revision += 1
@@ -289,21 +290,25 @@ class SharedController:
         await asyncio.gather(*self.tasks, return_exceptions=True)
         async with self.lock:
             await self._call(self.player._disconnect())
-        self.player.close()
-        await asyncio.to_thread(self.player.thread.join, 5)
+        if self.owns_player:
+            self.player.close()
+            await asyncio.to_thread(self.player.thread.join, 5)
         self.media_dir.cleanup()
 
 
 def create_app(controller, control_key):
-    if not isinstance(control_key, str) or len(control_key) < 32:
+    multi = hasattr(controller, 'resolve_key')
+    if not multi and (not isinstance(control_key, str) or len(control_key) < 32):
         raise ValueError('CONTROL_KEY debe tener al menos 32 caracteres.')
 
     @web.middleware
     async def guard(request, handler):
         if request.path != '/healthz':
             provided = request.headers.get('Authorization', '')
-            if not hmac.compare_digest(provided.encode(), ('Bearer ' + control_key).encode()):
+            scoped = controller.resolve_key(provided) if multi else controller
+            if scoped is None or (not multi and not hmac.compare_digest(provided.encode(), ('Bearer ' + control_key).encode())):
                 return web.json_response({'error': 'Clave de acceso incorrecta.'}, status=401)
+            request['session_controller'] = scoped
         try:
             return await handler(request)
         except ControlError as exc:
@@ -320,13 +325,15 @@ def create_app(controller, control_key):
     async def health(request):
         return web.json_response({'status': 'ok'})
     async def state(request):
-        return web.json_response(controller.snapshot())
+        return web.json_response(request['session_controller'].snapshot())
     async def rooms(request):
-        return web.json_response({'rooms': await controller.rooms()})
+        return web.json_response({'rooms': await request['session_controller'].rooms()})
     async def command(request):
         payload = await request.json()
-        result = await controller.command(request.match_info['action'], payload, request.headers.get('X-Request-ID', ''))
+        result = await request['session_controller'].command(request.match_info['action'], payload, request.headers.get('X-Request-ID', ''))
         return web.json_response(result)
+    async def upload(request):
+        return await request['session_controller'].upload(request)
     async def cleanup(application):
         await controller.close()
     async def start_idle_watchdog(application):
@@ -337,7 +344,7 @@ def create_app(controller, control_key):
     app.router.add_get('/v1/state', state)
     app.router.add_get('/v1/rooms', rooms)
     app.router.add_post('/v1/commands/{action}', command)
-    app.router.add_put('/v1/audio/{upload_id}', controller.upload)
+    app.router.add_put('/v1/audio/{upload_id}', upload)
     app.on_cleanup.append(cleanup)
     app.on_startup.append(start_idle_watchdog)
     return app
@@ -365,15 +372,16 @@ def single_instance():
 
 
 def main():
+    from multi_guild import MultiGuildController, parse_guild_keys
     token = os.environ.get('DISCORD_BOT_TOKEN', '').strip()
     key = os.environ.get('CONTROL_KEY', '').strip()
-    if not token or len(key) < 32:
-        raise SystemExit('Configurá DISCORD_BOT_TOKEN y CONTROL_KEY (mínimo 32 caracteres) en el servidor.')
+    guild_keys = parse_guild_keys(os.environ.get('GUILD_ACCESS_KEYS', ''), key, os.environ.get('ALLOWED_GUILD_IDS', ''))
+    if not token:
+        raise SystemExit('Configurá DISCORD_BOT_TOKEN en el servidor.')
     lock = single_instance()
     async def application():
         player = DiscordMusicPlayer()
-        guilds = os.environ.get('ALLOWED_GUILD_IDS', '').split(',')
-        controller = SharedController(player, token, asyncio.get_running_loop(), [v.strip() for v in guilds if v.strip()])
+        controller = MultiGuildController(player, token, asyncio.get_running_loop(), guild_keys, session_factory=SharedController)
         return create_app(controller, key)
     try:
         logging.basicConfig(level=logging.INFO)

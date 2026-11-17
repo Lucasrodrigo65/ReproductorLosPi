@@ -95,6 +95,31 @@ class DiscordPlaybackTests(unittest.IsolatedAsyncioTestCase):
         old_finished(None)
         self.assertTrue(self.player.events.empty())
 
+    async def test_multiguild_audio_callbacks_have_independent_generations(self):
+        self.player.multi_guild = True
+        self.player.voice_generations = {}
+        self.player.on_guild_audio_finished = MagicMock()
+        self.voice.guild.id = 1
+        other = MagicMock()
+        other.guild.id = 2
+        self.player._start_audio(self.voice, MagicMock())
+        first_finished = self.voice.play.call_args.kwargs['after']
+        self.player._start_audio(other, MagicMock())
+        first_finished(None)
+        self.player.on_guild_audio_finished.assert_called_once_with(1, 1, False, 0)
+        self.player.on_guild_audio_finished.reset_mock()
+        self.player._start_audio(self.voice, MagicMock())
+        first_finished(None)
+        self.player.on_guild_audio_finished.assert_not_called()
+
+    async def test_multiguild_join_does_not_disconnect_other_guild(self):
+        self.player.multi_guild = True
+        other = MagicMock()
+        other.disconnect = AsyncMock()
+        self.player.client.voice_clients.append(other)
+        await self.player._join_voice('test-token', 123)
+        other.disconnect.assert_not_awaited()
+
     async def test_waits_for_voice_encryption(self):
         self.voice._connection = SimpleNamespace(dave_protocol_version=1, can_encrypt=False)
         async def encryption_ready(_):
